@@ -9,10 +9,14 @@ import org.apache.spark.streaming.dstream.DStream
 import scala.io.Source
 
 object MaintenancePredictionApp {
+  val LRThreshold = 0.8
+
+  val testDataPath = "data/streams/stream.1"
+
   def main(args: Array[String]): Unit = {
     val conf = new SparkConf().setMaster("local[*]").setAppName("Maintenance Prediction Streaming")
     val ssc = new StreamingContext(conf, Seconds(1))
-    val model = LogisticRegressionModel.load(ssc.sparkContext, "model.data")
+    val model = LogisticRegressionModel.load(ssc.sparkContext, LearnerApp.modelPath)
 
     val data = createTestDStream(ssc)
     val featuresPerDevice = data.window(Seconds(LearnerApp.windowSize + 2), Seconds(1)).groupByKey().
@@ -23,7 +27,7 @@ object MaintenancePredictionApp {
           (k, Vectors.dense((valuesToConsider.map(_._1) ++ valuesToConsider.map(_._2)).toArray))
       })
 
-    val maintenanceSignals = featuresPerDevice.filter(f => model.predict(f._2) > 0.8)
+    val maintenanceSignals = featuresPerDevice.filter(f => model.predict(f._2) > LRThreshold)
 
     maintenanceSignals.map(f => f._1 + " device requires maintenance").print()
 
@@ -31,8 +35,9 @@ object MaintenancePredictionApp {
     ssc.awaitTermination()
   }
 
+
   def createTestDStream(ssc: StreamingContext): DStream[(Int, (Double, Double))] = {
-    val whole = Source.fromFile("data/streams/stream.1").getLines().map(s => {
+    val whole = Source.fromFile(testDataPath).getLines().map(s => {
       val elems = s.split(",")
       (elems(1).toInt, (elems(2).toDouble, elems(3).toDouble))
     })
