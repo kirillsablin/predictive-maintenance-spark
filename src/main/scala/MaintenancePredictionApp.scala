@@ -18,8 +18,8 @@ object MaintenancePredictionApp {
     val ssc = new StreamingContext(conf, Seconds(1))
     val model = LogisticRegressionModel.load(ssc.sparkContext, LearnerApp.modelPath)
 
-    val data = createTestDStream(ssc)
-    
+    val data = createDStream(ssc)
+
     val featuresPerDevice = Transformers.windowToFeatures(data)
 
     val maintenanceSignals = featuresPerDevice.filter(f => model.predict(f._2) > LRThreshold)
@@ -30,7 +30,7 @@ object MaintenancePredictionApp {
     ssc.awaitTermination()
   }
 
-  def createTestDStream(ssc: StreamingContext): DStream[(Int, (Double, Double))] = {
+  def createDStream(ssc: StreamingContext): DStream[(Int, (Double, Double))] = {
     val whole = Source.fromFile(testDataPath).getLines().map(line => {
       val elems = line.split(",")
       (elems(1).toInt, (elems(2).toDouble, elems(3).toDouble))
