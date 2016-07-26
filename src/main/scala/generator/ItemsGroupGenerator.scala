@@ -1,6 +1,6 @@
 package generator
 
-object ItemsHiveGenerator {
+object ItemsGroupGenerator {
   val itemsCount = 200
   val normalSizeDeviation = 1000
 

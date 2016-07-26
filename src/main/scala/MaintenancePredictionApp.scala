@@ -1,8 +1,8 @@
 import com.holdenkarau.spark.testing.TestInputStream
-import generator.ItemsHiveGenerator
+import generator.ItemsGroupGenerator
 import org.apache.spark._
 import org.apache.spark.mllib.classification.LogisticRegressionModel
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.dstream.DStream
 
@@ -19,28 +19,26 @@ object MaintenancePredictionApp {
     val model = LogisticRegressionModel.load(ssc.sparkContext, LearnerApp.modelPath)
 
     val data = createTestDStream(ssc)
-    val featuresPerDevice = data.window(Seconds(LearnerApp.windowSize + 2), Seconds(1)).groupByKey().
-      filter(_._2.size >= LearnerApp.windowSize).
-      map({
-        case (k, v) =>
-          val valuesToConsider = v.takeRight(LearnerApp.windowSize)
-          (k, Vectors.dense((valuesToConsider.map(_._1) ++ valuesToConsider.map(_._2)).toArray))
-      })
+    
+    val featuresPerDevice = Transformers.windowToFeatures(data)
 
     val maintenanceSignals = featuresPerDevice.filter(f => model.predict(f._2) > LRThreshold)
 
-    maintenanceSignals.map(f => f._1 + " device requires maintenance").print()
+    processMaintenanceSignals(maintenanceSignals)
 
     ssc.start()
     ssc.awaitTermination()
   }
 
-
   def createTestDStream(ssc: StreamingContext): DStream[(Int, (Double, Double))] = {
-    val whole = Source.fromFile(testDataPath).getLines().map(s => {
-      val elems = s.split(",")
+    val whole = Source.fromFile(testDataPath).getLines().map(line => {
+      val elems = line.split(",")
       (elems(1).toInt, (elems(2).toDouble, elems(3).toDouble))
     })
-    new TestInputStream(ssc.sparkContext, ssc, whole.grouped(ItemsHiveGenerator.itemsCount).toSeq, 2)
+    new TestInputStream(ssc.sparkContext, ssc, whole.grouped(ItemsGroupGenerator.itemsCount).toSeq, 2)
+  }
+
+  def processMaintenanceSignals(maintenanceSignals: DStream[(Int, Vector)]): Unit = {
+    maintenanceSignals.map(f => f._1 + " device requires maintenance").print()
   }
 }
